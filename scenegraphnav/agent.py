@@ -853,7 +853,7 @@ class SceneAgent(Agent):
         #     # 如果是多轮对话，需要记录历史对话
         #     # change into ChatGPT
         #     #导入openai key配置
-        #     os.environ["OPENAI_API_KEY"] = "sk-8xBWP046CnOzBAEaC262872c0f4d40EeAc366eB651B7C020" # 3.5--1美元
+        #     os.environ["OPENAI_API_KEY"] = "<redacted>" # 3.5--1美元
         #     # 设置 OPENAI_BASE_URL 环境变量
         #     os.environ["OPENAI_BASE_URL"] = "https://xiaoai.plus/v1"
         #     from utils.entity_extra import gpt_api_call
@@ -1580,13 +1580,16 @@ class GeonavAgent(Agent):
             rgb, _ = self.controller.perceive(self.controller.pose, self.episode.map_name)
             # print(rgb.shape)
             image_64 = encode_image_from_pil(Image.fromarray(rgb))
-            Image.fromarray(rgb).save(args.output_dir+str(self.episode.id) + f'rgb_{self.controller.timestep}.png')
+            if os.environ.get("GEONAV_SAVE_DEBUG_IMAGES", "0") == "1":
+                debug_dir = os.path.join(args.output_dir, "debug_images", str(self.episode.id))
+                os.makedirs(debug_dir, exist_ok=True)
+                Image.fromarray(rgb).save(os.path.join(debug_dir, f'rgb_{self.controller.timestep}.png'))
             image_list.append(image_64)
             # TODO: measure the z distance between the camera and the target on the ground
             # dep_img = Image.fromarray(depth.squeeze(), mode='L')  # 'L'表示灰度模式
             # update map with observations
             self.landmark_nav_map.update_observations(
-                self.controller.pose, rgb, None, use_gsam_map_cache=False, strategy=strategy
+                self.controller.pose, rgb, None, use_gsam_map_cache=self.args.gsam_use_map_cache, strategy=strategy
             )
             # detect and memory the scene objects
             detect_mode = 'VLM'  # 'GSAM'
@@ -2022,4 +2025,3 @@ class GeonavAgent(Agent):
             return []
         
         return operation_chain
-

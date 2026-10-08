@@ -99,8 +99,12 @@ class LandmarkNavMap(Map):
         self.trajectory.append(camera_pose)
         self.tracking_map.mark_current_view_area(camera_pose)
         if use_gsam_map_cache:
-            self.target_map.update_from_map_cache(camera_pose)
-            self.surroundings_map.update_from_map_cache(camera_pose)
+            # ``rgb`` is RGB as returned by cropclient. GSamMap stores BGR in
+            # the same convention as its live-detector path, and retains the
+            # crop/pose for grounding scene-graph boxes into world coordinates.
+            image_bgr = rgb[..., ::-1]
+            self.target_map.update_from_map_cache(camera_pose, image_bgr)
+            self.surroundings_map.update_from_map_cache(camera_pose, image_bgr)
         else:
             self.target_map.update_observation(camera_pose, rgb[..., ::-1], depth_perspective, strategy=strategy)
             self.surroundings_map.update_observation(camera_pose, rgb[..., ::-1], depth_perspective, strategy=strategy)

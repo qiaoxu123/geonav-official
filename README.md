@@ -1,5 +1,46 @@
 # GeoNav: Empowering MLLMs with Dual-Scale Geospatial Reasoning for Language-Goal Aerial Navigation
 
+# Local reproduction record (qiaoxu123 fork)
+
+This checkout started as a **direct clone of the authors’ official repository**, not a fork. It is now mirrored to the personal fork [`qiaoxu123/geonav-official`](https://github.com/qiaoxu123/geonav-official), with the original project retained as the `upstream` remote.
+
+## Full `test_unseen` reproduction
+
+| Metric | This run (5,311 episodes) | Paper (5-run mean ± std) | Difference |
+|---|---:|---:|---:|
+| NE (m, lower is better) | 68.01 | 73.5 ± 1.2 | −5.49 m |
+| SR | 26.66% | 25.9 ± 1.1% | +0.76 pp |
+| OSR | 43.55% | 41.6 ± 1.8% | +1.95 pp |
+| SPL | 20.38% | 16.0 ± 0.9% | +4.38 pp |
+
+The local means were recomputed from all 5,311 per-episode metric rows. All episodes have a valid saved trajectory; the completion manifest records 5,311/5,311 episodes and zero missing episodes. See [`GEONAV_LOCAL_REPRODUCTION_REPORT.md`](GEONAV_LOCAL_REPRODUCTION_REPORT.md) for the full audit and caveats.
+
+This is a **full-split, model-substituted reproduction**, not a strict numerical replication of the paper: the paper uses GPT-4o and reports the mean and standard deviation of five runs, while this is one run using DeepSeek Flash through an OpenAI-compatible API. The metric differences above are descriptive; they do not establish a controlled improvement. Paper reference: [GeoNav, Table 1 and Appendix E](https://arxiv.org/html/2504.09587).
+
+### Reproduction command
+
+Prepare the official weights and CityNav/CityRefer/RGBD data as described below. This machine used the provided `data/gsam/full_scan_(100, 240, 410).npz` cache, hence `--map_size 240 --map_meters 410 --gsam_use_map_cache`. Set credentials in the shell; **do not put API keys in tracked files**. The script can resume from valid saved trajectories and writes per-episode metrics plus a completion manifest.
+
+```bash
+export DEEPSEEK_API_KEY="<your-api-key>"
+export DEEPSEEK_BASE_URL="<your OpenAI-compatible API base URL>"
+export GEONAV_VLM_MODEL="<provider model id used for vision calls>"
+export GEONAV_LLM_MODEL="<provider model id used for language calls>"
+bash scripts/reproduce_test_unseen_deepseek.sh
+```
+
+The run used altitude 50 m, segmentation masks, detector threshold 0.20, batch size 50, maximum 20 timesteps, and 8 workers. It used the official repository’s evaluation pipeline and the same 20 m success threshold as the paper. The run command is saved in `results/geonav_deepseek_flash_full_corrected/full_test_unseen_manifest.json` in the experiment workspace; large data, model weights, raw trajectory files, and metrics are intentionally not part of this source commit.
+
+### Machine and software
+
+- Ubuntu 24.04-series kernel: Linux 6.8.0-139-generic, x86_64
+- GPU: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97,887 MiB; driver 610.43.02
+- CPU allocation: 12 logical CPUs; host CPU model string AMD Ryzen Threadripper PRO 5965WX 24-Cores
+- RAM: 108 GiB; swap disabled
+- Python 3.10.22; PyTorch 2.2.2+cu118; CUDA build 11.8
+
+PyTorch emitted a warning that this installed build does not list Blackwell `sm_120` support. The evaluation nevertheless completed; this run used the precomputed GSAM map cache, so it should not be read as a benchmark of live GPU segmentation throughput.
+
 ## Abstract
 
 Language-goal aerial navigation requires UAVs to localize targets in the complex outdoors such as urban blocks based on textual instruction. The indoor methods are often hard to scale to urban scenes due to ambiguous objects, limited visual field and spatial reasoning. In this work, we propose **GeoNav**, a multi-modal agent for long-range aerial navigation with geospatial awareness. GeoNav operates in three phases–landmark navigation, target search, and precise localization–mimicking human coarse-to-fine spatial reasoning patterns. To support such reasoning, it dynamically builds dual-scale spatial representations. The first is a global but schematic cognitive map, which fuses prior geographic knowledge and embodied visual cues into a top-down and explicit annotated form. It enables fast navigation to the landmark region via intuitive map-based reasoning. The second is a local but delicate scene graph representing hierarchical spatial relationships between landmarks and objects, utilized for accurate target localization. On top of the structured memory, GeoNav employs a spatial chain-of-thought mechanism to enable MLLMs with efficient and interpretable action-making across stages. On the CityNav benchmark, GeoNav surpasses the current SOTA up to 18.4% in success rate and significantly eliminate navigation error.

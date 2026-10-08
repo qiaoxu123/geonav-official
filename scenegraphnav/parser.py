@@ -53,6 +53,7 @@ class ExperimentArgs:
     # eval params
     eval_every: int
     eval_batch_size: int
+    num_workers: int
     eval_at_start: bool
     eval_max_timestep: int
     eval_client: Literal['crop', 'airsim']
@@ -146,6 +147,8 @@ def parse_args():
     # eval params
     parser.add_argument('--eval_every', type=int, default=1)
     parser.add_argument('--eval_batch_size', type=int, default=100)
+    parser.add_argument('--num_workers', type=int, default=1,
+                        help="并发运行独立 evaluation episodes；1 保持串行")
     parser.add_argument('--eval_at_start', action='store_true', default=False)
     parser.add_argument('--eval_max_timestep', type=int, default=20)
     parser.add_argument('--eval_client', type=str, choices=['crop', 'airsim'], default='crop')

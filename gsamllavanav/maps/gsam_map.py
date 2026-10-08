@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
-from groundingdino.util.inference import Model
+import threading
 from scipy.spatial.transform import Rotation as R
 
 from gsamllavanav.defaultpaths import GDINO_CHECKPOINT_PATH, GDINO_CONFIG_PATH, SAM_CHECKPOINT_PATH, MOBILE_SAM_CHECKPOINT_PATH, GSAM_MAPS_DIR
@@ -38,6 +38,7 @@ class GSamMap(Map):
     _grounding_dino_model = None
     _sam_predictor = None
     _map_cache = None
+    _map_cache_lock = threading.Lock()
 
     def __init__(
         self,
@@ -61,8 +62,9 @@ class GSamMap(Map):
         self.gsam_params = gsam_params
         self.obj_list = []
         self.draw_list = []
-        if GSamMap._grounding_dino_model is None or GSamMap._sam_predictor is None:
-            GSamMap._init_models(device=device)
+        # Models are initialized only when live perception is requested.
+        # The official dataset ships a full-scan GSAM cache, so cached runs
+        # should not require downloading detector/segmenter weights.
 
     #为每个语义类别动态分配颜色，优先用预定义色，超出后用黄金角算法生成新色，保证可区分性
     def _get_dynamic_color(self, phrase):
@@ -157,6 +159,8 @@ class GSamMap(Map):
             self.detections = None
             self.phrases = None
             return self
+        if GSamMap._grounding_dino_model is None or GSamMap._sam_predictor is None:
+            GSamMap._init_models(device='cuda')
         # 在这里不兼容旧方法了（目标检测）
         self.detections, self.phrases = GSamMap._gdino_predict_bboxes(
             image_bgr, self.captions, image_bgr.shape[0] / (2 * (camera_pose.z - self.ground_level)),
@@ -188,7 +192,15 @@ class GSamMap(Map):
         return self
     
     #从缓存中加载预先生成的地图片段，快速更新当前视野区域的gsam_map，提升效率
-    def update_from_map_cache(self, camera_pose: Pose4D):
+    def update_from_map_cache(self, camera_pose: Pose4D, image_bgr: Optional[np.ndarray] = None):
+
+        # Cached semantic maps still need the live view metadata for downstream
+        # scene-graph grounding. GeoNav projects VLM-produced pixel boxes from
+        # this crop into world coordinates via ``pose`` and ``image_bgr``.
+        # The cache replaces detection only; it must not remove that context.
+        self.pose = camera_pose
+        if image_bgr is not None:
+            self.image_bgr = image_bgr
 
         rows, cols = self.to_rows_cols(view_area_corners(camera_pose, self.ground_level))
         view_corners = np.stack((cols, rows)).T
@@ -199,7 +211,9 @@ class GSamMap(Map):
         params = (100, self.shape[0], round(self.size_meters))
         
         if GSamMap._map_cache is None:
-            GSamMap._map_cache = dict(np.load(GSAM_MAPS_DIR/f'full_scan_{params}.npz'))
+            with GSamMap._map_cache_lock:
+                if GSamMap._map_cache is None:
+                    GSamMap._map_cache = dict(np.load(GSAM_MAPS_DIR/f'full_scan_{params}.npz'))
 
         for caption in self.captions:
             caption = caption.replace('/', ' ')
@@ -265,6 +279,7 @@ class GSamMap(Map):
     @classmethod
     @torch.no_grad()
     def _init_models(cls, segmentation_model: SegmentationModel = 'MobileSAM', device='cuda'):
+        from groundingdino.util.inference import Model
         cls._grounding_dino_model = Model(GDINO_CONFIG_PATH, GDINO_CHECKPOINT_PATH, device)
         if segmentation_model == 'SAM':
             from segment_anything import SamPredictor, sam_model_registry
